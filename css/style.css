@@ -1,0 +1,584 @@
+/* Core Styling */
+:root {
+    --primary-color: #28a745; /* Green */
+    --primary-dark: #218838;
+    --secondary-color: #007bff; /* Blue */
+    --secondary-dark: #0056b3;
+    --accent-color: #ffc107; /* Amber */
+    --text-color: #343a40; /* Dark gray */
+    --light-bg: #f8f9fa; /* Lighter background */
+    --card-bg: #ffffff; /* Card background */
+    --border-color: #e9ecef; /* Light border */
+    --error-color: #dc3545; /* Red */
+    --success-color: #28a745; /* Green */
+    --info-color: #17a2b8; /* Cyan */
+}
+
+body {
+    font-family: 'Poppins', sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: var(--light-bg);
+    color: var(--text-color);
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Header */
+header {
+    background-color: var(--primary-color);
+    color: var(--card-bg);
+    padding: 1rem 20px;
+    margin-bottom: 25px;
+    border-radius: 12px;
+    box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.header-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+    width: 100%;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.logo i {
+    font-size: 2.8rem;
+    color: var(--accent-color);
+}
+
+.logo h1 {
+    margin: 0;
+    font-size: 2rem;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+}
+
+nav ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+}
+
+nav ul li a {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--card-bg);
+    text-align: center;
+    padding: 10px 18px;
+    text-decoration: none;
+    border-radius: 8px;
+    transition: background-color 0.3s ease, transform 0.2s ease;
+    font-weight: 500;
+}
+
+nav ul li a:hover {
+    background-color: var(--primary-dark);
+    transform: translateY(-2px);
+}
+
+nav ul li a i {
+    font-size: 1.1rem;
+}
+
+/* Main Content & Cards */
+main {
+    flex-grow: 1;
+}
+
+.card {
+    background-color: var(--card-bg);
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    padding: 30px;
+    margin-bottom: 25px;
+    transition: opacity 0.5s ease-in-out, transform 0.3s ease;
+}
+
+.card.fade-in {
+    opacity: 0;
+    transform: translateY(20px);
+}
+
+.card.active {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+h2 {
+    color: var(--primary-color);
+    text-align: center;
+    margin-bottom: 30px;
+    font-weight: 700;
+    font-size: 2.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+h2 i {
+    font-size: 2rem;
+}
+
+h3 {
+    color: var(--secondary-color);
+    margin-top: 25px;
+    margin-bottom: 20px;
+    font-size: 1.6rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+h4 {
+    color: var(--text-color);
+    margin-top: 20px;
+    margin-bottom: 15px;
+    font-size: 1.3rem;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 8px;
+}
+
+/* Forms */
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 10px;
+    font-weight: 600;
+    color: var(--text-color);
+    font-size: 1.05rem;
+}
+
+.form-group input[type="text"],
+.form-group input[type="password"],
+.form-group input[type="date"],
+.form-group input[type="number"],
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 1rem;
+    box-sizing: border-box;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.form-group input[type="text"]:focus,
+.form-group input[type="password"]:focus,
+.form-group input[type="date"]:focus,
+.form-group input[type="number"]:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    border-color: var(--secondary-color);
+    box-shadow: 0 0 0 4px rgba(0, 123, 255, 0.25);
+    outline: none;
+}
+
+/* Buttons */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 22px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1.05rem;
+    font-weight: 600;
+    transition: background-color 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease;
+    text-decoration: none;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.btn i {
+    font-size: 1.15rem;
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    color: var(--card-bg);
+}
+
+.btn-primary:hover {
+    background-color: var(--primary-dark);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+}
+
+.btn-secondary {
+    background-color: var(--secondary-color);
+    color: var(--card-bg);
+}
+
+.btn-secondary:hover {
+    background-color: var(--secondary-dark);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+}
+
+.btn-danger {
+    background-color: var(--error-color);
+    color: var(--card-bg);
+}
+
+.btn-danger:hover {
+    background-color: #c82333;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+}
+
+.btn-group {
+    display: flex;
+    gap: 15px;
+    margin-top: 25px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+/* Tables */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 25px;
+    background-color: var(--card-bg);
+    border-radius: 12px;
+    overflow: hidden; /* Ensures rounded corners apply to content */
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+table thead {
+    background-color: var(--light-bg);
+}
+
+table th,
+table td {
+    padding: 15px 20px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+}
+
+table th {
+    font-weight: 700;
+    color: var(--text-color);
+    text-transform: uppercase;
+    font-size: 0.95rem;
+}
+
+table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+table tbody tr:hover {
+    background-color: #f6f6f6;
+}
+
+/* Messages */
+.message {
+    padding: 12px 20px;
+    margin-top: 18px;
+    border-radius: 8px;
+    font-weight: 500;
+    text-align: center;
+    border: 1px solid transparent;
+}
+
+.message.error {
+    background-color: #f8d7da;
+    color: var(--error-color);
+    border-color: #f5c6cb;
+}
+
+.message.success {
+    background-color: #d4edda;
+    color: var(--success-color);
+    border-color: #c3e6cb;
+}
+
+.message.info {
+    background-color: #d1ecf1;
+    color: var(--info-color);
+    border-color: #bee5eb;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Loading Overlay */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.9);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    opacity: 1;
+    transition: opacity 0.3s ease;
+}
+
+.loading-overlay.hidden {
+    opacity: 0;
+    pointer-events: none; /* Allows clicks through when hidden */
+}
+
+.spinner {
+    border: 6px solid #f3f3f3;
+    border-top: 6px solid var(--primary-color);
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
+    margin-bottom: 15px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Specific Styles for Student Report */
+.student-report-info {
+    margin-bottom: 25px;
+    padding: 15px;
+    background-color: var(--light-bg);
+    border-radius: 8px;
+    border-left: 5px solid var(--secondary-color);
+}
+.student-report-info p {
+    margin: 5px 0;
+    font-size: 1.1rem;
+    color: var(--text-color);
+}
+
+.student-report-info span {
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.absensi-rekap-summary {
+    display: flex;
+    justify-content: space-around;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-bottom: 30px;
+    padding: 10px 0;
+}
+
+.absensi-rekap-item {
+    background-color: var(--light-bg);
+    padding: 18px 25px;
+    border-radius: 10px;
+    text-align: center;
+    min-width: 140px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    transition: transform 0.2s ease;
+}
+
+.absensi-rekap-item:hover {
+    transform: translateY(-5px);
+}
+
+.absensi-rekap-item .value {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-bottom: 8px;
+    line-height: 1;
+}
+
+.absensi-rekap-item .label {
+    font-size: 1rem;
+    color: var(--dark-gray);
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.status-success {
+    color: var(--success-color);
+    font-weight: 600;
+}
+
+.status-fail {
+    color: var(--error-color);
+    font-weight: 600;
+}
+
+/* Footer */
+footer {
+    text-align: center;
+    padding: 20px;
+    background-color: var(--text-color);
+    color: var(--light-bg);
+    margin-top: 40px;
+    border-radius: 12px;
+    box-shadow: 0 -4px 15px rgba(0,0,0,0.08);
+    font-size: 0.9rem;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 992px) {
+    .header-content {
+        flex-direction: column;
+        text-align: center;
+    }
+    nav ul {
+        justify-content: center;
+    }
+    .logo h1 {
+        font-size: 1.6rem;
+    }
+    h2 {
+        font-size: 1.8rem;
+    }
+    h3 {
+        font-size: 1.4rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 15px;
+    }
+    header {
+        padding: 1rem 15px;
+    }
+    .card {
+        padding: 20px;
+    }
+    nav ul {
+        flex-direction: column;
+        gap: 8px;
+    }
+    nav ul li {
+        width: 100%;
+    }
+    nav ul li a {
+        justify-content: center;
+        padding: 10px;
+    }
+    .btn-group {
+        flex-direction: column;
+        gap: 10px;
+    }
+    .btn {
+        width: 100%;
+    }
+
+    /* Responsive Tables - "Cards" on small screens */
+    table, thead, tbody, th, td, tr {
+        display: block;
+    }
+
+    table thead tr {
+        position: absolute;
+        top: -9999px;
+        left: -9999px;
+    }
+
+    table tr {
+        border: 1px solid var(--border-color);
+        margin-bottom: 15px;
+        border-radius: 10px;
+        box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+    }
+
+    table td {
+        border: none;
+        border-bottom: 1px solid var(--border-color);
+        position: relative;
+        padding-left: 50%; /* Space for the "label" */
+        text-align: right;
+    }
+
+    table td:before {
+        position: absolute;
+        top: 15px;
+        left: 15px;
+        width: 45%;
+        padding-right: 10px;
+        white-space: nowrap;
+        text-align: left;
+        font-weight: 700;
+        color: var(--text-color);
+        content: attr(data-label); /* Use data-label for responsiveness */
+    }
+
+    /* Specific data-labels for tables for better mobile display */
+    #siswa-list-container td:nth-of-type(1):before { content: "NIS"; }
+    #siswa-list-container td:nth-of-type(2):before { content: "Nama Lengkap"; }
+    #siswa-list-container td:nth-of-type(3):before { content: "Kelas"; }
+    #siswa-list-container td:nth-of-type(4):before { content: "Jenis Kelamin"; }
+    #siswa-list-container td:nth-of-type(5):before { content: "Aksi"; }
+
+    #rekap-absensi-result td:nth-of-type(1):before { content: "Nama Siswa"; }
+    #rekap-absensi-result td:nth-of-type(2):before { content: "Kelas"; }
+    #rekap-absensi-result td:nth-of-type(3):before { content: "Hadir"; }
+    #rekap-absensi-result td:nth-of-type(4):before { content: "Sakit"; }
+    #rekap-absensi-result td:nth-of-type(5):before { content: "Izin"; }
+    #rekap-absensi-result td:nth-of-type(6):before { content: "Alpha"; }
+    #rekap-absensi-result td:nth-of-type(7):before { content: "Total Hari"; }
+
+    #rekap-nilai-result td:nth-of-type(1):before { content: "Nama Siswa"; }
+    #rekap-nilai-result td:nth-of-type(2):before { content: "Kelas"; }
+    #rekap-nilai-result td:nth-of-type(3):before { content: "Mata Pelajaran"; }
+    #rekap-nilai-result td:nth-of-type(4):before { content: "Rata-rata Nilai"; }
+    #rekap-nilai-result td:nth-of-type(5):before { content: "Status KKM"; }
+
+    #user-list-container td:nth-of-type(1):before { content: "Username"; }
+    #user-list-container td:nth-of-type(2):before { content: "Role"; }
+    #user-list-container td:nth-of-type(3):before { content: "Aksi"; }
+
+    #nilai-report-table td:nth-of-type(1):before { content: "Mata Pelajaran"; }
+    #nilai-report-table td:nth-of-type(2):before { content: "Rata-rata Nilai"; }
+    #nilai-report-table td:nth-of-type(3):before { content: "Status KKM"; }
+
+    .absensi-rekap-item {
+        min-width: unset;
+        width: 45%; /* Adjust for 2 columns */
+    }
+}
+@media (max-width: 480px) {
+    .absensi-rekap-item {
+        width: 100%; /* Stack on very small screens */
+    }
+}
