@@ -32,6 +32,8 @@ function doPost(e) {
     try {
       data = JSON.parse(e.postData.contents);
     } catch (error) {
+      // Log error untuk debugging di Stackdriver Logging
+      console.error('Error parsing JSON data:', error.message, e.postData.contents);
       return createErrorResponse('Invalid JSON data provided: ' + error.message);
     }
   }
@@ -39,16 +41,23 @@ function doPost(e) {
   let result = {};
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID); // Buka spreadsheet spesifik
-    const sheet = sheetName ? ss.getSheetByName(sheetName) : null;
 
-    // Aksi yang tidak selalu membutuhkan parameter sheetName di awal
-    if (!sheet && action !== 'login' && action !== 'readConfig' && action !== 'getStudentReport' && action !== 'createUser') {
-      throw new Error(`Sheet '${sheetName}' not found.`);
+    // Pengecekan sheet yang lebih terpusat dan penanganan error
+    let sheet = null;
+    if (sheetName) {
+      sheet = ss.getSheetByName(sheetName);
+      if (!sheet && action !== 'login' && action !== 'readConfig' && action !== 'getStudentReport' && action !== 'createUser') {
+        // Hanya lembar yang diperlukan untuk tindakan tertentu yang diizinkan menjadi null
+        throw new Error(`Sheet '${sheetName}' not found.`);
+      }
     }
 
     switch (action) {
       case 'login':
-        result = handleLogin(ss.getSheetByName('Users'), data.username, data.password);
+        // Pastikan sheet 'Users' ada untuk login
+        const userSheetLogin = ss.getSheetByName('Users');
+        if (!userSheetLogin) throw new Error('User sheet not found for login.');
+        result = handleLogin(userSheetLogin, data.username, data.password);
         break;
       case 'read':
         result = readData(sheet);
@@ -66,30 +75,47 @@ function doPost(e) {
         result = bulkCreateData(sheet, data.records);
         break;
       case 'readConfig':
-        result = readConfig(ss.getSheetByName('Konfigurasi'));
+        const configSheetRead = ss.getSheetByName('Konfigurasi');
+        if (!configSheetRead) throw new Error('Configuration sheet not found.');
+        result = readConfig(configSheetRead);
         break;
       case 'inputAbsensi':
-        result = inputAbsensi(ss.getSheetByName('Absensi'), data.absensiRecords);
+        const absensiSheetInput = ss.getSheetByName('Absensi');
+        if (!absensiSheetInput) throw new Error('Absensi sheet not found.');
+        result = inputAbsensi(absensiSheetInput, data.absensiRecords);
         break;
       case 'getRekapAbsensi':
-        result = getRekapAbsensi(ss.getSheetByName('Absensi'), ss.getSheetByName('Siswa'), data.filter);
+        const absensiSheetRekap = ss.getSheetByName('Absensi');
+        const siswaSheetRekapAbs = ss.getSheetByName('Siswa');
+        if (!absensiSheetRekap || !siswaSheetRekapAbs) throw new Error('Absensi or Siswa sheet not found for rekap absensi.');
+        result = getRekapAbsensi(absensiSheetRekap, siswaSheetRekapAbs, data.filter);
         break;
       case 'inputNilai':
-        result = inputNilai(ss.getSheetByName('Nilai'), data.nilaiRecord);
+        const nilaiSheetInput = ss.getSheetByName('Nilai');
+        if (!nilaiSheetInput) throw new Error('Nilai sheet not found.');
+        result = inputNilai(nilaiSheetInput, data.nilaiRecord);
         break;
       case 'getRekapNilai':
-        result = getRekapNilai(ss.getSheetByName('Nilai'), ss.getSheetByName('Siswa'), ss.getSheetByName('Konfigurasi'), data.filter);
+        const nilaiSheetRekap = ss.getSheetByName('Nilai');
+        const siswaSheetRekapNilai = ss.getSheetByName('Siswa');
+        const configSheetRekap = ss.getSheetByName('Konfigurasi');
+        if (!nilaiSheetRekap || !siswaSheetRekapNilai || !configSheetRekap) throw new Error('Nilai, Siswa, or Konfigurasi sheet not found for rekap nilai.');
+        result = getRekapNilai(nilaiSheetRekap, siswaSheetRekapNilai, configSheetRekap, data.filter);
         break;
       case 'createUser':
-        result = createUser(ss.getSheetByName('Users'), data);
+        const userSheetCreate = ss.getSheetByName('Users');
+        if (!userSheetCreate) throw new Error('User sheet not found for user creation.');
+        result = createUser(userSheetCreate, data);
         break;
       case 'getStudentReport': // Aksi baru untuk laporan mandiri siswa
         result = getStudentReport(ss, data.filter);
         break;
       default:
-        throw new Error('Invalid action.');
+        throw new Error('Invalid action: ' + action);
     }
   } catch (error) {
+    // Log error lengkap untuk debugging
+    console.error('Error in doPost for action:', action, 'Error:', error.message, error.stack);
     result = createErrorResponse(error.message);
   }
 
@@ -107,13 +133,20 @@ function createErrorResponse(message) {
 
 /**
  * Membaca semua data dari sheet yang diberikan.
+ * Mengembalikan data sebagai array objek, dengan baris pertama sebagai header.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - Objek sheet dari mana data akan dibaca.
  * @returns {object} Objek dengan status dan data yang dibaca.
  */
 function readData(sheet) {
-  if (!sheet) return { status: 'success', data: [] }; // Tangani kasus di mana sheet mungkin null
+  if (!sheet) {
+    // Ini seharusnya sudah ditangani oleh pengecekan di doPost, tapi sebagai fallback
+    return { status: 'error', message: 'Sheet provided is null or undefined.' };
+  }
+
   const range = sheet.getDataRange();
   const values = range.getDisplayValues(); // Dapatkan nilai seperti yang ditampilkan (terformat)
+  // Catatan: getValues() akan mengembalikan nilai mentah, yang mungkin lebih baik untuk manipulasi data.
+  // getDisplayValues() bagus jika Anda ingin nilai yang diformat (misalnya, tanggal sebagai string).
 
   if (values.length === 0 || values[0].length === 0) {
     return { status: 'success', data: [] };
@@ -125,7 +158,10 @@ function readData(sheet) {
     const row = values[i];
     const rowObject = {};
     headers.forEach((header, index) => {
-      rowObject[header] = row[index];
+      // Pastikan header tidak kosong untuk menghindari masalah properti objek
+      if (header) {
+        rowObject[header] = row[index];
+      }
     });
     data.push(rowObject);
   }
@@ -139,10 +175,13 @@ function readData(sheet) {
  * @returns {object} Objek dengan status dan pesan.
  */
 function createData(sheet, newData) {
+  if (!sheet) throw new Error('Sheet is null for create operation.');
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const newRow = headers.map(header => newData[header] !== undefined ? newData[header] : '');
+  const newRow = headers.map(header => newData.hasOwnProperty(header) ? newData[header] : '');
   sheet.appendRow(newRow);
-  return { status: 'success', message: 'Data added successfully.', id: newData.ID_Siswa || newData.ID_User || 'Unknown ID' }; // Mengembalikan beberapa pengidentifikasi
+  // Mengembalikan ID yang relevan jika ada, atau pesan sukses
+  const idKey = headers.find(h => h.includes('ID_')); // Cari header yang mengandung 'ID_'
+  return { status: 'success', message: 'Data added successfully.', id: idKey ? newData[idKey] : 'Unknown ID' };
 }
 
 /**
@@ -152,15 +191,22 @@ function createData(sheet, newData) {
  * @returns {object} Objek dengan status dan pesan.
  */
 function bulkCreateData(sheet, records) {
+  if (!sheet) throw new Error('Sheet is null for bulkCreate operation.');
   if (!records || records.length === 0) {
     return { status: 'error', message: 'No records provided for bulk creation.' };
   }
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const rowsToAppend = records.map(record => {
-    return headers.map(header => record[header] !== undefined ? record[header] : '');
+    return headers.map(header => record.hasOwnProperty(header) ? record[header] : '');
   });
-  sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, rowsToAppend[0].length).setValues(rowsToAppend);
-  return { status: 'success', message: `${records.length} records added successfully.` };
+
+  // Pastikan ada data untuk ditulis dan tidak ada baris kosong
+  if (rowsToAppend.length > 0 && rowsToAppend[0].length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, rowsToAppend[0].length).setValues(rowsToAppend);
+    return { status: 'success', message: `${records.length} records added successfully.` };
+  } else {
+    return { status: 'error', message: 'No valid data to append for bulk creation.' };
+  }
 }
 
 /**
@@ -170,30 +216,39 @@ function bulkCreateData(sheet, records) {
  * @returns {object} Objek dengan status dan pesan.
  */
 function updateData(sheet, updatedData) {
-  // Diasumsikan kolom pertama adalah ID unik (misal: ID_Siswa, ID_User, ID_Absensi)
+  if (!sheet) throw new Error('Sheet is null for update operation.');
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const idColumn = headers[0]; // Diasumsikan ID ada di kolom pertama
-  const idToUpdate = updatedData[idColumn];
+  const idColumn = headers[0]; // Diasumsikan kolom pertama adalah ID unik
 
+  const idToUpdate = updatedData[idColumn];
   if (!idToUpdate) {
     throw new Error(`Missing unique identifier '${idColumn}' for update operation.`);
   }
 
   const dataRange = sheet.getDataRange();
-  const values = dataRange.getValues();
+  const values = dataRange.getValues(); // Gunakan getValues() untuk nilai mentah
 
-  for (let i = 1; i < values.length; i--) { // Iterasi mundur untuk menghapus baris dengan aman
+  let rowIndex = -1;
+  for (let i = 1; i < values.length; i++) { // BUG FIXED: Loop harus maju (i++)
     if (String(values[i][0]) === String(idToUpdate)) { // Bandingkan sebagai string untuk robusta
-      headers.forEach((header, colIndex) => {
-        if (updatedData.hasOwnProperty(header)) {
-          values[i][colIndex] = updatedData[header];
-        }
-      });
-      sheet.getRange(1, 1, values.length, values[0].length).setValues(values);
-      return { status: 'success', message: 'Data updated successfully.' };
+      rowIndex = i;
+      break;
     }
   }
-  return { status: 'error', message: 'Data not found for update.' };
+
+  if (rowIndex !== -1) {
+    // Perbarui nilai di baris yang ditemukan
+    headers.forEach((header, colIndex) => {
+      if (updatedData.hasOwnProperty(header)) {
+        values[rowIndex][colIndex] = updatedData[header];
+      }
+    });
+    // Setel kembali seluruh rentang data untuk menerapkan perubahan
+    sheet.getRange(1, 1, values.length, values[0].length).setValues(values);
+    return { status: 'success', message: 'Data updated successfully.' };
+  } else {
+    return { status: 'error', message: 'Data not found for update.' };
+  }
 }
 
 /**
@@ -203,7 +258,7 @@ function updateData(sheet, updatedData) {
  * @returns {object} Objek dengan status dan pesan.
  */
 function deleteData(sheet, dataToDelete) {
-  // Diasumsikan kolom pertama adalah ID unik (misal: ID_Siswa, ID_User, ID_Absensi)
+  if (!sheet) throw new Error('Sheet is null for delete operation.');
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const idColumn = headers[0]; // Diasumsikan ID ada di kolom pertama
   const idToDelete = dataToDelete[idColumn];
@@ -230,7 +285,7 @@ function deleteData(sheet, dataToDelete) {
  * Menangani proses login pengguna.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} userSheet - Sheet 'Users'.
  * @param {string} username - Nama pengguna.
- * @param {string} password - Kata sandi.
+ * @param {string} password - Kata sandi yang dimasukkan pengguna.
  * @returns {object} Objek dengan status, pesan, dan peran pengguna jika berhasil.
  */
 function handleLogin(userSheet, username, password) {
@@ -239,29 +294,62 @@ function handleLogin(userSheet, username, password) {
   const users = readData(userSheet).data;
   const user = users.find(u => u.Username === username);
 
-  if (user && user.Password_Hash === password) { // PERINGATAN: Dalam produksi, HASH KATA SANDI dengan aman!
-    return { status: 'success', message: 'Login successful!', role: user.Role };
-  } else {
-    return { status: 'error', message: 'Invalid username or password.' };
+  if (user) {
+    // HASH KATA SANDI YANG DIMASUKKAN UNTUK PERBANDINGAN
+    const hashedPassword = hashPassword(password);
+    if (user.Password_Hash === hashedPassword) {
+      return { status: 'success', message: 'Login successful!', role: user.Role };
+    }
   }
+  return { status: 'error', message: 'Invalid username or password.' };
 }
 
 /**
  * Membuat pengguna baru.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} userSheet - Sheet 'Users'.
- * @param {object} userData - Data pengguna baru.
+ * @param {object} userData - Data pengguna baru (harus termasuk 'username' dan 'password').
  * @returns {object} Objek dengan status, pesan, dan ID pengguna baru.
  */
 function createUser(userSheet, userData) {
-  // Dalam aplikasi nyata, hash kata sandi di sini sebelum menyimpan
-  userData.Password_Hash = userData.password; // Untuk demo, penugasan langsung. Gunakan hashing nyata!
+  if (!userSheet) throw new Error('User sheet not found for user creation.');
+  if (!userData.username || !userData.password) {
+    throw new Error('Username and password are required to create a user.');
+  }
+
+  // HASH KATA SANDI SEBELUM MENYIMPAN
+  userData.Password_Hash = hashPassword(userData.password);
   userData.ID_User = 'USER_' + Utilities.getUuid(); // ID unik sederhana
 
+  // Hapus properti password mentah sebelum menyimpan ke sheet
+  delete userData.password;
+
   const headers = userSheet.getRange(1, 1, 1, userSheet.getLastColumn()).getValues()[0];
-  const newRow = headers.map(header => userData[header] !== undefined ? userData[header] : '');
+  const newRow = headers.map(header => userData.hasOwnProperty(header) ? userData[header] : '');
   userSheet.appendRow(newRow);
   return { status: 'success', message: 'User created successfully.', id: userData.ID_User };
 }
+
+/**
+ * Fungsi bantu untuk hashing kata sandi.
+ * PENTING: Untuk aplikasi produksi, pertimbangkan solusi hashing yang lebih kuat
+ * yang mendukung salting dan iterasi (misalnya, bcrypt).
+ * Apps Script tidak memiliki fungsi bcrypt bawaan. Utilities.computeDigest
+ * adalah pilihan terbaik yang tersedia untuk hashing satu arah sederhana.
+ * @param {string} password - Kata sandi mentah.
+ * @returns {string} Kata sandi yang di-hash (Base64 encoded).
+ */
+function hashPassword(password) {
+  // Untuk keamanan yang lebih baik, tambahkan 'salt' unik per pengguna
+  // const salt = Utilities.getUuid(); // Hasilkan salt unik
+  // const combined = password + salt;
+  // const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, combined);
+  // return Utilities.base64Encode(digest) + ':' + salt; // Simpan salt bersama hash
+
+  // Untuk demo sederhana tanpa salt (kurang aman)
+  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, password);
+  return Utilities.base64Encode(digest);
+}
+
 
 /**
  * Membaca data konfigurasi dari sheet 'Konfigurasi'.
@@ -269,7 +357,7 @@ function createUser(userSheet, userData) {
  * @returns {object} Objek dengan status dan data konfigurasi.
  */
 function readConfig(configSheet) {
-  if (!configSheet) return createErrorResponse('Configuration sheet not found.');
+  if (!configSheet) throw new Error('Configuration sheet not found.');
   const configData = readData(configSheet).data;
   const config = {};
   configData.forEach(row => {
@@ -287,16 +375,23 @@ function readConfig(configSheet) {
  * @returns {object} Objek dengan status dan pesan.
  */
 function inputAbsensi(absensiSheet, absensiRecords) {
+  if (!absensiSheet) throw new Error('Absensi sheet not found.');
   if (!absensiRecords || absensiRecords.length === 0) {
     return createErrorResponse('No absensi records provided.');
   }
   const headers = absensiSheet.getRange(1, 1, 1, absensiSheet.getLastColumn()).getValues()[0];
   const rowsToAppend = absensiRecords.map(record => {
-    record.ID_Absensi = 'ABS_' + Utilities.getUuid(); // Hasilkan ID unik untuk setiap catatan absensi
-    return headers.map(header => record[header] !== undefined ? record[header] : '');
+    // Hasilkan ID unik hanya jika belum ada (misalnya, jika diimpor dari eksternal)
+    record.ID_Absensi = record.ID_Absensi || 'ABS_' + Utilities.getUuid();
+    return headers.map(header => record.hasOwnProperty(header) ? record[header] : '');
   });
-  absensiSheet.getRange(absensiSheet.getLastRow() + 1, 1, rowsToAppend.length, rowsToAppend[0].length).setValues(rowsToAppend);
-  return { status: 'success', message: `${absensiRecords.length} absensi records saved.` };
+
+  if (rowsToAppend.length > 0 && rowsToAppend[0].length > 0) {
+    absensiSheet.getRange(absensiSheet.getLastRow() + 1, 1, rowsToAppend.length, rowsToAppend[0].length).setValues(rowsToAppend);
+    return { status: 'success', message: `${absensiRecords.length} absensi records saved.` };
+  } else {
+    return { status: 'error', message: 'No valid absensi data to append.' };
+  }
 }
 
 /**
@@ -307,20 +402,22 @@ function inputAbsensi(absensiSheet, absensiRecords) {
  * @returns {object} Objek dengan status dan data rekap absensi.
  */
 function getRekapAbsensi(absensiSheet, siswaSheet, filter) {
+  if (!absensiSheet || !siswaSheet) throw new Error('Absensi or Siswa sheet not found.');
+
   const allAbsensi = readData(absensiSheet).data;
   const allSiswa = readData(siswaSheet).data;
-  const siswaMap = new Map(allSiswa.map(s => [s.ID_Siswa, s]));
+  const siswaMap = new Map(allSiswa.map(s => [String(s.ID_Siswa), s])); // Pastikan kunci adalah string
 
   const rekap = {};
 
   allAbsensi.forEach(abs => {
-    const siswaId = abs.ID_Siswa;
+    const siswaId = String(abs.ID_Siswa); // Pastikan ID siswa adalah string
     const status = abs.Status_Kehadiran;
     const tanggal = abs.Tanggal; // Diasumsikan format 'YYYY-MM-DD'
 
     // Terapkan filter: berdasarkan ID_Siswa atau berdasarkan Bulan
     if (filter) {
-      if (filter.ID_Siswa && String(siswaId) !== String(filter.ID_Siswa)) {
+      if (filter.ID_Siswa && siswaId !== String(filter.ID_Siswa)) {
         return; // Lewati jika ID siswa tidak cocok
       }
       if (filter.month && !tanggal.startsWith(filter.month)) { // format bulan 'YYYY-MM'
@@ -337,7 +434,14 @@ function getRekapAbsensi(absensiSheet, siswaSheet, filter) {
         Hadir: 0, Sakit: 0, Izin: 0, Alpha: 0, Total: 0
       };
     }
-    rekap[siswaId][status] = (rekap[siswaId][status] || 0) + 1;
+    // Pastikan status adalah properti yang valid dan inisialisasi jika belum ada
+    if (rekap[siswaId].hasOwnProperty(status)) {
+      rekap[siswaId][status]++;
+    } else {
+      // Jika ada status yang tidak terduga, mungkin ingin menanganinya
+      // rekap[siswaId][status] = 1;
+      console.warn(`Unexpected attendance status: ${status} for student ${siswaId}`);
+    }
     rekap[siswaId].Total++;
   });
 
@@ -351,11 +455,12 @@ function getRekapAbsensi(absensiSheet, siswaSheet, filter) {
  * @returns {object} Objek dengan status dan pesan.
  */
 function inputNilai(nilaiSheet, nilaiRecord) {
-  nilaiRecord.ID_Nilai = 'NILAI_' + Utilities.getUuid(); // Hasilkan ID unik
+  if (!nilaiSheet) throw new Error('Nilai sheet not found.');
+  nilaiRecord.ID_Nilai = nilaiRecord.ID_Nilai || 'NILAI_' + Utilities.getUuid(); // Hasilkan ID unik jika belum ada
   const headers = nilaiSheet.getRange(1, 1, 1, nilaiSheet.getLastColumn()).getValues()[0];
-  const newRow = headers.map(header => nilaiRecord[header] !== undefined ? nilaiRecord[header] : '');
+  const newRow = headers.map(header => nilaiRecord.hasOwnProperty(header) ? nilaiRecord[header] : '');
   nilaiSheet.appendRow(newRow);
-  return { status: 'success', message: 'Nilai saved successfully.' };
+  return { status: 'success', message: 'Nilai saved successfully.', id: nilaiRecord.ID_Nilai };
 }
 
 /**
@@ -367,23 +472,31 @@ function inputNilai(nilaiSheet, nilaiRecord) {
  * @returns {object} Objek dengan status dan data rekap nilai.
  */
 function getRekapNilai(nilaiSheet, siswaSheet, configSheet, filter) {
+  if (!nilaiSheet || !siswaSheet || !configSheet) throw new Error('Nilai, Siswa, or Konfigurasi sheet not found.');
+
   const allNilai = readData(nilaiSheet).data;
   const allSiswa = readData(siswaSheet).data;
   const config = readConfig(configSheet).data;
   const KKM = parseFloat(config.KKM_DEFAULT || '75'); // KKM Default jika tidak ditemukan
 
-  const siswaMap = new Map(allSiswa.map(s => [s.ID_Siswa, s]));
+  const siswaMap = new Map(allSiswa.map(s => [String(s.ID_Siswa), s]));
   const rekapPerSiswaMap = new Map(); // Simpan skor detail per siswa per mata pelajaran
 
   allNilai.forEach(nilai => {
-    const siswaId = nilai.ID_Siswa;
+    const siswaId = String(nilai.ID_Siswa);
     const mapel = nilai.Mata_Pelajaran;
     const kategori = nilai.Kategori_Nilai; // Disimpan untuk kemungkinan tampilan detail di masa depan
     const score = parseFloat(nilai.Nilai);
 
+    // Validasi score
+    if (isNaN(score)) {
+      console.warn(`Invalid score encountered for student ${siswaId}, subject ${mapel}: ${nilai.Nilai}. Skipping this record.`);
+      return;
+    }
+
     // Terapkan filter
     if (filter) {
-      if (filter.ID_Siswa && String(siswaId) !== String(filter.ID_Siswa)) {
+      if (filter.ID_Siswa && siswaId !== String(filter.ID_Siswa)) {
         return;
       }
       if (filter.Mata_Pelajaran && String(mapel) !== String(filter.Mata_Pelajaran)) {
@@ -410,11 +523,14 @@ function getRekapNilai(nilaiSheet, siswaSheet, configSheet, filter) {
   const finalRekap = [];
   rekapPerSiswaMap.forEach((mapelData, siswaId) => {
     const siswa = siswaMap.get(siswaId);
-    if (!siswa) return; // Lewati jika siswa tidak ditemukan
+    if (!siswa) {
+      console.warn(`Student with ID ${siswaId} not found in Siswa sheet.`);
+      return; // Lewati jika siswa tidak ditemukan
+    }
 
     Object.keys(mapelData).forEach(mapel => {
       const currentMapelData = mapelData[mapel];
-      const rataRata = currentMapelData.totalScore / currentMapelData.count;
+      const rataRata = currentMapelData.count > 0 ? currentMapelData.totalScore / currentMapelData.count : 0;
       const statusKKM = rataRata >= KKM ? 'Lulus' : 'Tidak Lulus';
 
       finalRekap.push({
@@ -445,7 +561,7 @@ function getStudentReport(ss, filter) {
   const configSheet = ss.getSheetByName('Konfigurasi');
 
   if (!siswaSheet || !nilaiSheet || !absensiSheet || !configSheet) {
-    throw new Error('One or more required sheets not found for student report.');
+    throw new Error('One or more required sheets (Siswa, Nilai, Absensi, Konfigurasi) not found for student report.');
   }
 
   const studentName = filter.studentName;
@@ -456,7 +572,7 @@ function getStudentReport(ss, filter) {
   const allSiswa = readData(siswaSheet).data;
   // Pencarian nama siswa tidak peka huruf besar/kecil dan pencocokan parsial
   const matchedSiswa = allSiswa.filter(s =>
-    s.Nama_Lengkap && s.Nama_Lengkap.toLowerCase().includes(studentName.toLowerCase())
+    s.Nama_Lengkap && String(s.Nama_Lengkap).toLowerCase().includes(String(studentName).toLowerCase())
   );
 
   if (matchedSiswa.length === 0) {
@@ -468,7 +584,7 @@ function getStudentReport(ss, filter) {
   }
 
   const targetStudent = matchedSiswa[0];
-  const studentId = targetStudent.ID_Siswa;
+  const studentId = String(targetStudent.ID_Siswa); // Pastikan ID siswa adalah string
 
   // Dapatkan Nilai untuk siswa
   const nilaiData = getRekapNilai(nilaiSheet, siswaSheet, configSheet, { ID_Siswa: studentId }).data;
@@ -477,7 +593,7 @@ function getStudentReport(ss, filter) {
   const currentMonth = new Date().toISOString().slice(0, 7); // Format YYYY-MM (e.g., "2025-07")
   const absensiData = getRekapAbsensi(absensiSheet, siswaSheet, { ID_Siswa: studentId, month: currentMonth }).data;
   // Temukan rekap absensi untuk siswa spesifik
-  const studentAbsensiRekap = absensiData.find(a => String(a.ID_Siswa) === String(studentId)) || {
+  const studentAbsensiRekap = absensiData.find(a => String(a.ID_Siswa) === studentId) || {
     Hadir: 0, Sakit: 0, Izin: 0, Alpha: 0, Total: 0
   };
 
