@@ -340,7 +340,6 @@ function getRekapAbsensi(absensiSheet, siswaSheet, filter) {
     rekap[siswaId][status] = (rekap[siswaId][status] || 0) + 1;
     rekap[siswaId].Total++;
   });
-
   return { status: 'success', data: Object.values(rekap) };
 }
 
