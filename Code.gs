@@ -1,6 +1,6 @@
 // Global variable for Spreadsheet ID
 // GANTI INI DENGAN ID GOOGLE SHEETS ANDA YANG ASLI
-const SPREADSHEET_ID = '1pBd3BS0C_iuXsw2drQ3J68w3bDACIz2riJDnTJYlyXs'; // <--- PASTIKAN INI ADALAH ID SPREADSHEET ANDA
+const SPREADSHEET_ID = '1pBd3BS0C_iuXsw2drQ3J68w3bDACIz2riJDfTJYlyXs'; // <--- PASTIKAN INI ADALAH ID SPREADSHEET ANDA
 
 /**
  * Fungsi doGet akan dipanggil saat aplikasi web diakses.
