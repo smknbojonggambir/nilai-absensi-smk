@@ -1,7 +1,7 @@
 // js/script.js
 
 // !!! PENTING: GANTI DENGAN URL WEB APP DEPLOYMENT ANDA !!!
-const APP_SCRIPT_URL = 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID_HERE/exec';
+const APP_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby7kCHNipeKFHqDrAUbhzwvSw60Tf_TpNw1zFwj-PfqDZtTaIF7fyTmhSB0E933TTEr/exec';
 
 // --- DOM Elements Cache ---
 const DOM = {
