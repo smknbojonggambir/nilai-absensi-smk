@@ -1,492 +1,566 @@
-// Global variable for Spreadsheet ID
-// GANTI INI DENGAN ID GOOGLE SHEETS ANDA YANG ASLI
-const SPREADSHEET_ID = '1pBd3BS0C_iuXsw2drQ3J68w3bDACIz2riJDfTJYlyXs'; // <--- PASTIKAN INI ADALAH ID SPREADSHEET ANDA
+// Pastikan kode ini berada di dalam file 'script.html' di folder 'js'
 
-/**
- * Fungsi doGet akan dipanggil saat aplikasi web diakses.
- * Ini bertanggung jawab untuk menyajikan file HTML utama.
- * @param {GoogleAppsScript.Events.DoGet} e - Objek event doGet.
- * @returns {GoogleAppsScript.HTML.HtmlOutput}
- */
-function doGet(e) {
-  // Mengambil template HTML dari file 'index.html' (perhatikan 'index' dengan 'i' kecil)
-  // CSS dan JS akan di-embed di sini melalui tag scriptlet di index.html
-  return HtmlService.createTemplateFromFile('index')
-    .evaluate()
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
-}
+document.addEventListener('DOMContentLoaded', () => {
+    const appDiv = document.getElementById('app');
 
-/**
- * Fungsi doPost akan dipanggil saat aplikasi web menerima permintaan POST.
- * Ini menangani semua logika backend (CRUD, login, rekap, dll.).
- * @param {GoogleAppsScript.Events.DoPost} e - Objek event doPost.
- * @returns {GoogleAppsScript.Content.TextOutput}
- */
-function doPost(e) {
-  const action = e.parameter.action;
-  const sheetName = e.parameter.sheetName; // Sheet yang ditargetkan oleh aksi
-  let data = {}; // Payload data dari frontend
-
-  // Tangani payload JSON dari permintaan fetch (untuk data POST)
-  if (e.postData && e.postData.contents) {
-    try {
-      data = JSON.parse(e.postData.contents);
-    } catch (error) {
-      return createErrorResponse('Invalid JSON data provided: ' + error.message);
-    }
-  }
-
-  let result = {};
-  try {
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID); // Buka spreadsheet spesifik
-    const sheet = sheetName ? ss.getSheetByName(sheetName) : null;
-
-    // Aksi yang tidak selalu membutuhkan parameter sheetName di awal
-    if (!sheet && action !== 'login' && action !== 'readConfig' && action !== 'getStudentReport' && action !== 'createUser') {
-      throw new Error(`Sheet '${sheetName}' not found.`);
-    }
-
-    switch (action) {
-      case 'login':
-        result = handleLogin(ss.getSheetByName('Users'), data.username, data.password);
-        break;
-      case 'read':
-        result = readData(sheet);
-        break;
-      case 'create':
-        result = createData(sheet, data);
-        break;
-      case 'update':
-        result = updateData(sheet, data); // Membutuhkan identifikasi unik (kolom pertama diasumsikan)
-        break;
-      case 'delete':
-        result = deleteData(sheet, data); // Membutuhkan identifikasi unik (kolom pertama diasumsikan)
-        break;
-      case 'bulkCreate': // Untuk mengimpor data Excel/CSV
-        result = bulkCreateData(sheet, data.records);
-        break;
-      case 'readConfig':
-        result = readConfig(ss.getSheetByName('Konfigurasi'));
-        break;
-      case 'inputAbsensi':
-        result = inputAbsensi(ss.getSheetByName('Absensi'), data.absensiRecords);
-        break;
-      case 'getRekapAbsensi':
-        result = getRekapAbsensi(ss.getSheetByName('Absensi'), ss.getSheetByName('Siswa'), data.filter);
-        break;
-      case 'inputNilai':
-        result = inputNilai(ss.getSheetByName('Nilai'), data.nilaiRecord);
-        break;
-      case 'getRekapNilai':
-        result = getRekapNilai(ss.getSheetByName('Nilai'), ss.getSheetByName('Siswa'), ss.getSheetByName('Konfigurasi'), data.filter);
-        break;
-      case 'createUser':
-        result = createUser(ss.getSheetByName('Users'), data);
-        break;
-      case 'getStudentReport': // Aksi baru untuk laporan mandiri siswa
-        result = getStudentReport(ss, data.filter);
-        break;
-      default:
-        throw new Error('Invalid action.');
-    }
-  } catch (error) {
-    result = createErrorResponse(error.message);
-  }
-
-  // Mengembalikan hasil dalam format JSON
-  return ContentService.createTextOutput(JSON.stringify(result))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-// Fungsi bantu untuk struktur respons error yang konsisten
-function createErrorResponse(message) {
-  return { status: 'error', message: message };
-}
-
-// --- CORE CRUD Functions ---
-
-/**
- * Membaca semua data dari sheet yang diberikan.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - Objek sheet dari mana data akan dibaca.
- * @returns {object} Objek dengan status dan data yang dibaca.
- */
-function readData(sheet) {
-  if (!sheet) return { status: 'success', data: [] }; // Tangani kasus di mana sheet mungkin null
-  const range = sheet.getDataRange();
-  const values = range.getDisplayValues(); // Dapatkan nilai seperti yang ditampilkan (terformat)
-
-  if (values.length === 0 || values[0].length === 0) {
-    return { status: 'success', data: [] };
-  }
-
-  const headers = values[0];
-  const data = [];
-  for (let i = 1; i < values.length; i++) {
-    const row = values[i];
-    const rowObject = {};
-    headers.forEach((header, index) => {
-      rowObject[header] = row[index];
-    });
-    data.push(rowObject);
-  }
-  return { status: 'success', data: data };
-}
-
-/**
- * Membuat data baru di sheet yang diberikan.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - Objek sheet tempat data akan ditambahkan.
- * @param {object} newData - Objek data baru yang akan ditambahkan.
- * @returns {object} Objek dengan status dan pesan.
- */
-function createData(sheet, newData) {
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const newRow = headers.map(header => newData[header] !== undefined ? newData[header] : '');
-  sheet.appendRow(newRow);
-  return { status: 'success', message: 'Data added successfully.', id: newData.ID_Siswa || newData.ID_User || 'Unknown ID' }; // Mengembalikan beberapa pengidentifikasi
-}
-
-/**
- * Membuat data dalam jumlah besar (bulk) di sheet yang diberikan.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - Objek sheet tempat data akan ditambahkan.
- * @param {Array<object>} records - Array objek data yang akan ditambahkan.
- * @returns {object} Objek dengan status dan pesan.
- */
-function bulkCreateData(sheet, records) {
-  if (!records || records.length === 0) {
-    return { status: 'error', message: 'No records provided for bulk creation.' };
-  }
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const rowsToAppend = records.map(record => {
-    return headers.map(header => record[header] !== undefined ? record[header] : '');
-  });
-  sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, rowsToAppend[0].length).setValues(rowsToAppend);
-  return { status: 'success', message: `${records.length} records added successfully.` };
-}
-
-/**
- * Memperbarui data yang ada di sheet yang diberikan.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - Objek sheet tempat data akan diperbarui.
- * @param {object} updatedData - Objek data yang diperbarui, harus berisi ID unik.
- * @returns {object} Objek dengan status dan pesan.
- */
-function updateData(sheet, updatedData) {
-  // Diasumsikan kolom pertama adalah ID unik (misal: ID_Siswa, ID_User, ID_Absensi)
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const idColumn = headers[0]; // Diasumsikan ID ada di kolom pertama
-  const idToUpdate = updatedData[idColumn];
-
-  if (!idToUpdate) {
-    throw new Error(`Missing unique identifier '${idColumn}' for update operation.`);
-  }
-
-  const dataRange = sheet.getDataRange();
-  const values = dataRange.getValues();
-
-  for (let i = 1; i < values.length; i++) {
-    if (String(values[i][0]) === String(idToUpdate)) { // Bandingkan sebagai string untuk robusta
-      headers.forEach((header, colIndex) => {
-        if (updatedData.hasOwnProperty(header)) {
-          values[i][colIndex] = updatedData[header];
+    // Fungsi pembantu untuk memanggil fungsi Google Apps Script (backend)
+    // Menggunakan fetch API untuk POST request ke fungsi doPost() di Code.gs
+    async function callAppsScript(action, sheetName, payload = {}) {
+        const url = new URL(location.href);
+        url.searchParams.append('action', action);
+        if (sheetName) {
+            url.searchParams.append('sheetName', sheetName);
         }
-      });
-      sheet.getRange(1, 1, values.length, values[0].length).setValues(values);
-      return { status: 'success', message: 'Data updated successfully.' };
-    }
-  }
-  return { status: 'error', message: 'Data not found for update.' };
-}
 
-/**
- * Menghapus data dari sheet yang diberikan.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - Objek sheet tempat data akan dihapus.
- * @param {object} dataToDelete - Objek data yang akan dihapus, harus berisi ID unik.
- * @returns {object} Objek dengan status dan pesan.
- */
-function deleteData(sheet, dataToDelete) {
-  // Diasumsikan kolom pertama adalah ID unik (misal: ID_Siswa, ID_User, ID_Absensi)
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const idColumn = headers[0]; // Diasumsikan ID ada di kolom pertama
-  const idToDelete = dataToDelete[idColumn];
-
-  if (!idToDelete) {
-    throw new Error(`Missing unique identifier '${idColumn}' for delete operation.`);
-  }
-
-  const dataRange = sheet.getDataRange();
-  const values = dataRange.getValues();
-
-  for (let i = values.length - 1; i >= 1; i--) { // Iterasi mundur untuk menghapus baris dengan aman
-    if (String(values[i][0]) === String(idToDelete)) {
-      sheet.deleteRow(i + 1); // Sheet berbasis 1-indexed
-      return { status: 'success', message: 'Data deleted successfully.' };
-    }
-  }
-  return { status: 'error', message: 'Data not found for delete.' };
-}
-
-// --- Specific Business Logic Functions ---
-
-/**
- * Menangani proses login pengguna.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} userSheet - Sheet 'Users'.
- * @param {string} username - Nama pengguna.
- * @param {string} password - Kata sandi.
- * @returns {object} Objek dengan status, pesan, dan peran pengguna jika berhasil.
- */
-function handleLogin(userSheet, username, password) {
-  if (!userSheet) return createErrorResponse('User sheet not found.');
-
-  const users = readData(userSheet).data;
-  const user = users.find(u => u.Username === username);
-
-  if (user && user.Password_Hash === password) { // PERINGATAN: Dalam produksi, HASH KATA SANDI dengan aman!
-    return { status: 'success', message: 'Login successful!', role: user.Role };
-  } else {
-    return { status: 'error', message: 'Invalid username or password.' };
-  }
-}
-
-/**
- * Membuat pengguna baru.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} userSheet - Sheet 'Users'.
- * @param {object} userData - Data pengguna baru.
- * @returns {object} Objek dengan status, pesan, dan ID pengguna baru.
- */
-function createUser(userSheet, userData) {
-  // Dalam aplikasi nyata, hash kata sandi di sini sebelum menyimpan
-  userData.Password_Hash = userData.password; // Untuk demo, penugasan langsung. Gunakan hashing nyata!
-  userData.ID_User = 'USER_' + Utilities.getUuid(); // ID unik sederhana
-
-  const headers = userSheet.getRange(1, 1, 1, userSheet.getLastColumn()).getValues()[0];
-  const newRow = headers.map(header => userData[header] !== undefined ? userData[header] : '');
-  userSheet.appendRow(newRow);
-  return { status: 'success', message: 'User created successfully.', id: userData.ID_User };
-}
-
-/**
- * Membaca data konfigurasi dari sheet 'Konfigurasi'.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} configSheet - Sheet 'Konfigurasi'.
- * @returns {object} Objek dengan status dan data konfigurasi.
- */
-function readConfig(configSheet) {
-  if (!configSheet) return createErrorResponse('Configuration sheet not found.');
-  const configData = readData(configSheet).data;
-  const config = {};
-  configData.forEach(row => {
-    if (row.Key) { // Pastikan Key ada
-      config[row.Key] = row.Value;
-    }
-  });
-  return { status: 'success', data: config };
-}
-
-/**
- * Memasukkan catatan absensi.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} absensiSheet - Sheet 'Absensi'.
- * @param {Array<object>} absensiRecords - Array catatan absensi.
- * @returns {object} Objek dengan status dan pesan.
- */
-function inputAbsensi(absensiSheet, absensiRecords) {
-  if (!absensiRecords || absensiRecords.length === 0) {
-    return createErrorResponse('No absensi records provided.');
-  }
-  const headers = absensiSheet.getRange(1, 1, 1, absensiSheet.getLastColumn()).getValues()[0];
-  const rowsToAppend = absensiRecords.map(record => {
-    record.ID_Absensi = 'ABS_' + Utilities.getUuid(); // Hasilkan ID unik untuk setiap catatan absensi
-    return headers.map(header => record[header] !== undefined ? record[header] : '');
-  });
-  absensiSheet.getRange(absensiSheet.getLastRow() + 1, 1, rowsToAppend.length, rowsToAppend[0].length).setValues(rowsToAppend);
-  return { status: 'success', message: `${absensiRecords.length} absensi records saved.` };
-}
-
-/**
- * Mendapatkan rekap absensi berdasarkan filter.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} absensiSheet - Sheet 'Absensi'.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} siswaSheet - Sheet 'Siswa'.
- * @param {object} filter - Objek filter (misal: { ID_Siswa: 'SIS_001', month: '2025-07' }).
- * @returns {object} Objek dengan status dan data rekap absensi.
- */
-function getRekapAbsensi(absensiSheet, siswaSheet, filter) {
-  const allAbsensi = readData(absensiSheet).data;
-  const allSiswa = readData(siswaSheet).data;
-  const siswaMap = new Map(allSiswa.map(s => [s.ID_Siswa, s]));
-
-  const rekap = {};
-
-  allAbsensi.forEach(abs => {
-    const siswaId = abs.ID_Siswa;
-    const status = abs.Status_Kehadiran;
-    const tanggal = abs.Tanggal; // Diasumsikan format 'YYYY-MM-DD'
-
-    // Terapkan filter: berdasarkan ID_Siswa atau berdasarkan Bulan
-    if (filter) {
-      if (filter.ID_Siswa && String(siswaId) !== String(filter.ID_Siswa)) {
-        return; // Lewati jika ID siswa tidak cocok
-      }
-      if (filter.month && !tanggal.startsWith(filter.month)) { // format bulan 'YYYY-MM'
-        return; // Lewati jika bulan tidak cocok
-      }
+        try {
+            const response = await fetch(url.toString(), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+            return await response.json();
+        } catch (error) {
+            console.error('Error calling Apps Script:', error);
+            // Mengembalikan struktur error yang konsisten dengan backend
+            return { status: 'error', message: 'Failed to communicate with server: ' + error.message };
+        }
     }
 
-    if (!rekap[siswaId]) {
-      const siswa = siswaMap.get(siswaId);
-      rekap[siswaId] = {
-        ID_Siswa: siswaId,
-        Nama_Lengkap: siswa ? siswa.Nama_Lengkap : 'Unknown',
-        Kelas: siswa ? siswa.Kelas : 'Unknown',
-        Hadir: 0, Sakit: 0, Izin: 0, Alpha: 0, Total: 0
-      };
-    }
-    rekap[siswaId][status] = (rekap[siswaId][status] || 0) + 1;
-    rekap[siswaId].Total++;
-  });
-  return { status: 'success', data: Object.values(rekap) };
-}
+    // --- Contoh Implementasi Frontend Sederhana ---
+    // (Anda bisa mengganti atau memperluas ini dengan framework seperti Vue/React/Angular)
 
-/**
- * Memasukkan catatan nilai.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} nilaiSheet - Sheet 'Nilai'.
- * @param {object} nilaiRecord - Catatan nilai yang akan ditambahkan.
- * @returns {object} Objek dengan status dan pesan.
- */
-function inputNilai(nilaiSheet, nilaiRecord) {
-  nilaiRecord.ID_Nilai = 'NILAI_' + Utilities.getUuid(); // Hasilkan ID unik
-  const headers = nilaiSheet.getRange(1, 1, 1, nilaiSheet.getLastColumn()).getValues()[0];
-  const newRow = headers.map(header => nilaiRecord[header] !== undefined ? nilaiRecord[header] : '');
-  nilaiSheet.appendRow(newRow);
-  return { status: 'success', message: 'Nilai saved successfully.' };
-}
+    function renderLoginPage() {
+        appDiv.innerHTML = `
+            <h2>Login</h2>
+            <p id="loginMessage"></p>
+            <label for="username">Username:</label>
+            <input type="text" id="username" placeholder="Username">
+            <label for="password">Password:</label>
+            <input type="password" id="password" placeholder="Password">
+            <button id="loginBtn">Login</button>
+        `;
 
-/**
- * Mendapatkan rekap nilai berdasarkan filter.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} nilaiSheet - Sheet 'Nilai'.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} siswaSheet - Sheet 'Siswa'.
- * @param {GoogleAppsScript.Spreadsheet.Sheet} configSheet - Sheet 'Konfigurasi'.
- * @param {object} filter - Objek filter (misal: { ID_Siswa: 'SIS_001', Mata_Pelajaran: 'Informatika' }).
- * @returns {object} Objek dengan status dan data rekap nilai.
- */
-function getRekapNilai(nilaiSheet, siswaSheet, configSheet, filter) {
-  const allNilai = readData(nilaiSheet).data;
-  const allSiswa = readData(siswaSheet).data;
-  const config = readConfig(configSheet).data;
-  const KKM = parseFloat(config.KKM_DEFAULT || '75'); // KKM Default jika tidak ditemukan
+        document.getElementById('loginBtn').addEventListener('click', async () => {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const messageElem = document.getElementById('loginMessage');
 
-  const siswaMap = new Map(allSiswa.map(s => [s.ID_Siswa, s]));
-  const rekapPerSiswaMap = new Map(); // Simpan skor detail per siswa per mata pelajaran
+            messageElem.className = ''; // Reset classes
+            messageElem.textContent = 'Logging in...';
 
-  allNilai.forEach(nilai => {
-    const siswaId = nilai.ID_Siswa;
-    const mapel = nilai.Mata_Pelajaran;
-    const kategori = nilai.Kategori_Nilai; // Disimpan untuk kemungkinan tampilan detail di masa depan
-    const score = parseFloat(nilai.Nilai);
+            try {
+                const result = await callAppsScript('login', 'Users', { username, password });
 
-    // Terapkan filter
-    if (filter) {
-      if (filter.ID_Siswa && String(siswaId) !== String(filter.ID_Siswa)) {
-        return;
-      }
-      if (filter.Mata_Pelajaran && String(mapel) !== String(filter.Mata_Pelajaran)) {
-        return;
-      }
-      // Tambahkan filter lain seperti 'semester', 'tahun_ajaran' jika diperlukan
+                if (result.status === 'success') {
+                    messageElem.className = 'success-message';
+                    messageElem.textContent = `Login berhasil! Peran: ${result.role}`;
+                    // Redirect atau tampilkan dashboard sesuai peran
+                    setTimeout(() => renderDashboard(result.role), 1000); // Tunda sebentar untuk pesan terlihat
+                } else {
+                    messageElem.className = 'error-message';
+                    messageElem.textContent = result.message;
+                }
+            } catch (error) {
+                messageElem.className = 'error-message';
+                messageElem.textContent = 'Error koneksi: ' + error.message;
+                console.error('Login error:', error);
+            }
+        });
     }
 
-    if (!rekapPerSiswaMap.has(siswaId)) {
-      rekapPerSiswaMap.set(siswaId, {});
+    async function renderDashboard(role) {
+        appDiv.innerHTML = `
+            <h2>Dashboard (${role})</h2>
+            <button id="logoutBtn">Logout</button>
+            <hr>
+            <div id="dashboardContent"></div>
+        `;
+
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            renderLoginPage();
+        });
+
+        const dashboardContent = document.getElementById('dashboardContent');
+
+        if (role === 'Admin') {
+            dashboardContent.innerHTML = `
+                <h3>Admin Tools</h3>
+                <button id="viewStudentsBtn">Lihat Siswa</button>
+                <button id="inputAbsenBtn">Input Absensi</button>
+                <button id="inputNilaiBtn">Input Nilai</button>
+                <button id="rekapAbsenBtn">Rekap Absensi</button>
+                <button id="rekapNilaiBtn">Rekap Nilai</button>
+                <button id="createUserBtn">Buat User Baru</button>
+                <hr>
+                <div id="adminPanel"></div>
+            `;
+            document.getElementById('viewStudentsBtn').addEventListener('click', () => showData('Siswa', 'Daftar Siswa', 'adminPanel'));
+            document.getElementById('inputAbsenBtn').addEventListener('click', renderInputAbsensi);
+            document.getElementById('inputNilaiBtn').addEventListener('click', renderInputNilai);
+            document.getElementById('rekapAbsenBtn').addEventListener('click', () => renderRekapAbsensi());
+            document.getElementById('rekapNilaiBtn').addEventListener('click', () => renderRekapNilai());
+            document.getElementById('createUserBtn').addEventListener('click', renderCreateUser);
+
+        } else if (role === 'Guru') {
+             dashboardContent.innerHTML = `
+                <h3>Guru Tools</h3>
+                <button id="inputAbsenBtn">Input Absensi</button>
+                <button id="inputNilaiBtn">Input Nilai</button>
+                <button id="rekapAbsenBtn">Rekap Absensi</button>
+                <button id="rekapNilaiBtn">Rekap Nilai</button>
+                <hr>
+                <div id="guruPanel"></div>
+            `;
+            document.getElementById('inputAbsenBtn').addEventListener('click', renderInputAbsensi);
+            document.getElementById('inputNilaiBtn').addEventListener('click', renderInputNilai);
+            document.getElementById('rekapAbsenBtn').addEventListener('click', () => renderRekapAbsensi());
+            document.getElementById('rekapNilaiBtn').addEventListener('click', () => renderRekapNilai());
+        } else if (role === 'Siswa') {
+            dashboardContent.innerHTML = `
+                <h3>Laporan Pribadi</h3>
+                <p id="studentReportMessage"></p>
+                <label for="studentNameSearch">Cari Nama Lengkap Anda:</label>
+                <input type="text" id="studentNameSearch" placeholder="Nama Lengkap Anda">
+                <button id="searchReportBtn">Lihat Laporan</button>
+                <div id="studentReportDisplay"></div>
+            `;
+            document.getElementById('searchReportBtn').addEventListener('click', async () => {
+                const studentName = document.getElementById('studentNameSearch').value;
+                const reportDisplay = document.getElementById('studentReportDisplay');
+                const messageElem = document.getElementById('studentReportMessage');
+
+                messageElem.className = '';
+                messageElem.textContent = '';
+                reportDisplay.innerHTML = ''; // Clear previous report
+
+                if (!studentName) {
+                    messageElem.className = 'error-message';
+                    messageElem.textContent = 'Nama siswa harus diisi.';
+                    return;
+                }
+                
+                messageElem.textContent = 'Mencari laporan...';
+                try {
+                    // Panggil getStudentReport tanpa parameter sheetName (karena fungsi ini mengakses beberapa sheet)
+                    const result = await callAppsScript('getStudentReport', null, { studentName });
+
+                    if (result.status === 'success') {
+                        if (result.studentReport) {
+                            messageElem.className = 'success-message';
+                            messageElem.textContent = result.message;
+                            
+                            // Render Student Info
+                            let studentInfoHtml = `
+                                <h4>Informasi Siswa:</h4>
+                                <p><strong>ID:</strong> ${result.studentReport.studentInfo.ID_Siswa}</p>
+                                <p><strong>Nama:</strong> ${result.studentReport.studentInfo.Nama_Lengkap}</p>
+                                <p><strong>Kelas:</strong> ${result.studentReport.studentInfo.Kelas}</p>
+                            `;
+
+                            // Render Nilai Report
+                            let nilaiHtml = '<h4>Rekap Nilai:</h4>';
+                            if (result.studentReport.nilaiReport && result.studentReport.nilaiReport.length > 0) {
+                                nilaiHtml += `
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>Mata Pelajaran</th>
+                                                <th>Rata-rata Nilai</th>
+                                                <th>Status KKM</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${result.studentReport.nilaiReport.map(n => `
+                                                <tr>
+                                                    <td>${n.Mata_Pelajaran}</td>
+                                                    <td>${n.Rata_Rata_Nilai}</td>
+                                                    <td style="color: ${n.Status_KKM === 'Lulus' ? 'green' : 'red'};">${n.Status_KKM}</td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                `;
+                            } else {
+                                nilaiHtml += '<p>Belum ada data nilai.</p>';
+                            }
+
+                            // Render Absensi Report
+                            const absensi = result.studentReport.absensiReport;
+                            const currentMonthFormatted = new Date().toLocaleString('id-ID', { month: 'long', year: 'numeric' });
+                            let absensiHtml = `
+                                <h4>Rekap Absensi Bulan Ini (${currentMonthFormatted}):</h4>
+                                <p><strong>Hadir:</strong> ${absensi.Hadir}</p>
+                                <p><strong>Sakit:</strong> ${absensi.Sakit}</p>
+                                <p><strong>Izin:</strong> ${absensi.Izin}</p>
+                                <p><strong>Alpha:</strong> ${absensi.Alpha}</p>
+                                <p><strong>Total Kehadiran:</strong> ${absensi.Total}</p>
+                                <p>(Rekap dihitung berdasarkan kehadiran di bulan ${currentMonthFormatted})</p>
+                            `;
+
+                            reportDisplay.innerHTML = studentInfoHtml + nilaiHtml + absensiHtml;
+
+                        } else if (result.matchedStudents && result.matchedStudents.length > 0) {
+                            messageElem.className = 'error-message';
+                            messageElem.textContent = result.message; // "Ditemukan lebih dari satu siswa..."
+                            reportDisplay.innerHTML = `
+                                <p>Daftar siswa yang cocok:</p>
+                                <ul>
+                                    ${result.matchedStudents.map(s => `<li>${s.Nama_Lengkap} (${s.Kelas})</li>`).join('')}
+                                </ul>
+                                <p>Mohon masukkan nama lengkap yang lebih spesifik.</p>
+                            `;
+                        } else {
+                            messageElem.className = 'error-message';
+                            messageElem.textContent = result.message; // "Siswa tidak ditemukan."
+                        }
+                    } else {
+                        messageElem.className = 'error-message';
+                        messageElem.textContent = `Error: ${result.message}`;
+                    }
+                } catch (error) {
+                    messageElem.className = 'error-message';
+                    messageElem.textContent = `Error memuat laporan: ${error.message}`;
+                    console.error('Error getting student report:', error);
+                }
+            });
+        }
     }
-    if (!rekapPerSiswaMap.get(siswaId)[mapel]) {
-      rekapPerSiswaMap.get(siswaId)[mapel] = {
-        scores: [],
-        totalScore: 0,
-        count: 0
-      };
+
+    // Fungsi untuk menampilkan data dari sheet tertentu dalam bentuk tabel
+    async function showData(sheetName, title, panelId) {
+        const panel = document.getElementById(panelId);
+        panel.innerHTML = `<h3>${title}</h3><p>Memuat data...</p>`;
+        try {
+            const data = await callAppsScript('read', sheetName);
+            let tableHtml = '';
+            if (data.length > 0) {
+                tableHtml += `<table><thead><tr>`;
+                Object.keys(data[0]).forEach(header => {
+                    tableHtml += `<th>${header}</th>`;
+                });
+                tableHtml += `</tr></thead><tbody>`;
+                data.forEach(row => {
+                    tableHtml += `<tr>`;
+                    Object.values(row).forEach(cell => {
+                        tableHtml += `<td>${cell}</td>`;
+                    });
+                    tableHtml += `</tr>`;
+                });
+                tableHtml += `</tbody></table>`;
+            } else {
+                tableHtml = '<p>Tidak ada data untuk ditampilkan.</p>';
+            }
+            panel.innerHTML = tableHtml;
+        } catch (error) {
+            panel.innerHTML = `<p class="error-message">Gagal memuat ${title}: ${error.message}</p>`;
+        }
     }
-    rekapPerSiswaMap.get(siswaId)[mapel].scores.push(score);
-    rekapPerSiswaMap.get(siswaId)[mapel].totalScore += score;
-    rekapPerSiswaMap.get(siswaId)[mapel].count++;
-  });
 
-  const finalRekap = [];
-  rekapPerSiswaMap.forEach((mapelData, siswaId) => {
-    const siswa = siswaMap.get(siswaId);
-    if (!siswa) return; // Lewati jika siswa tidak ditemukan
+    async function renderInputAbsensi() {
+        const panel = document.getElementById('adminPanel') || document.getElementById('guruPanel');
+        panel.innerHTML = `
+            <h3>Input Absensi</h3>
+            <p id="absensiMessage"></p>
+            <label for="absensi_siswaId">ID Siswa:</label>
+            <input type="text" id="absensi_siswaId" placeholder="ID_Siswa, misal: SIS_2025001">
+            <label for="absensi_tanggal">Tanggal:</label>
+            <input type="date" id="absensi_tanggal" value="${new Date().toISOString().slice(0, 10)}">
+            <label for="absensi_status">Status Kehadiran:</label>
+            <select id="absensi_status">
+                <option value="Hadir">Hadir</option>
+                <option value="Sakit">Sakit</option>
+                <option value="Izin">Izin</option>
+                <option value="Alpha">Alpha</option>
+            </select>
+            <label for="absensi_keterangan">Keterangan (Opsional):</label>
+            <input type="text" id="absensi_keterangan" placeholder="Alasan jika sakit/izin">
+            <button id="submitAbsensiBtn">Submit Absensi</button>
+        `;
 
-    Object.keys(mapelData).forEach(mapel => {
-      const currentMapelData = mapelData[mapel];
-      const rataRata = currentMapelData.totalScore / currentMapelData.count;
-      const statusKKM = rataRata >= KKM ? 'Lulus' : 'Tidak Lulus';
+        document.getElementById('submitAbsensiBtn').addEventListener('click', async () => {
+            const absensiRecord = {
+                ID_Siswa: document.getElementById('absensi_siswaId').value,
+                Tanggal: document.getElementById('absensi_tanggal').value,
+                Status_Kehadiran: document.getElementById('absensi_status').value,
+                Keterangan: document.getElementById('absensi_keterangan').value
+            };
+            const messageElem = document.getElementById('absensiMessage');
 
-      finalRekap.push({
-        ID_Siswa: siswaId,
-        Nama_Lengkap: siswa.Nama_Lengkap,
-        Kelas: siswa.Kelas,
-        Mata_Pelajaran: mapel,
-        Rata_Rata_Nilai: rataRata.toFixed(2), // Format ke 2 desimal
-        Status_KKM: statusKKM
-      });
-    });
-  });
+            messageElem.className = '';
+            messageElem.textContent = '';
 
-  return { status: 'success', data: finalRekap };
-}
+            if (!absensiRecord.ID_Siswa || !absensiRecord.Tanggal || !absensiRecord.Status_Kehadiran) {
+                messageElem.className = 'error-message';
+                messageElem.textContent = 'Harap lengkapi semua bidang yang wajib (ID Siswa, Tanggal, Status).';
+                return;
+            }
 
-// --- FITUR BARU: Laporan Mandiri Siswa ---
-/**
- * Mendapatkan laporan lengkap (informasi siswa, nilai, absensi) untuk siswa tertentu.
- * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss - Objek spreadsheet.
- * @param {object} filter - Objek filter (harus mengandung 'studentName').
- * @returns {object} Objek dengan status, pesan, dan laporan siswa.
- */
-function getStudentReport(ss, filter) {
-  const siswaSheet = ss.getSheetByName('Siswa');
-  const nilaiSheet = ss.getSheetByName('Nilai');
-  const absensiSheet = ss.getSheetByName('Absensi');
-  const configSheet = ss.getSheetByName('Konfigurasi');
-
-  if (!siswaSheet || !nilaiSheet || !absensiSheet || !configSheet) {
-    throw new Error('One or more required sheets not found for student report.');
-  }
-
-  const studentName = filter.studentName;
-  if (!studentName) {
-    throw new Error('Student name is required for report.');
-  }
-
-  const allSiswa = readData(siswaSheet).data;
-  // Pencarian nama siswa tidak peka huruf besar/kecil dan pencocokan parsial
-  const matchedSiswa = allSiswa.filter(s =>
-    s.Nama_Lengkap && s.Nama_Lengkap.toLowerCase().includes(studentName.toLowerCase())
-  );
-
-  if (matchedSiswa.length === 0) {
-    return { status: 'success', message: 'Siswa tidak ditemukan.', studentReport: null };
-  }
-  if (matchedSiswa.length > 1) {
-    // Jika lebih dari satu siswa cocok, kembalikan mereka agar frontend dapat meminta input yang lebih spesifik
-    return { status: 'success', message: 'Ditemukan lebih dari satu siswa dengan nama serupa. Mohon lebih spesifik.', matchedStudents: matchedSiswa };
-  }
-
-  const targetStudent = matchedSiswa[0];
-  const studentId = targetStudent.ID_Siswa;
-
-  // Dapatkan Nilai untuk siswa
-  const nilaiData = getRekapNilai(nilaiSheet, siswaSheet, configSheet, { ID_Siswa: studentId }).data;
-
-  // Dapatkan Absensi untuk siswa (rekap bulanan untuk bulan saat ini)
-  const currentMonth = new Date().toISOString().slice(0, 7); // Format YYYY-MM (e.g., "2025-07")
-  const absensiData = getRekapAbsensi(absensiSheet, siswaSheet, { ID_Siswa: studentId, month: currentMonth }).data;
-  // Temukan rekap absensi untuk siswa spesifik
-  const studentAbsensiRekap = absensiData.find(a => String(a.ID_Siswa) === String(studentId)) || {
-    Hadir: 0, Sakit: 0, Izin: 0, Alpha: 0, Total: 0
-  };
-
-  return {
-    status: 'success',
-    message: 'Laporan siswa berhasil dimuat.',
-    studentReport: {
-      studentInfo: targetStudent,
-      nilaiReport: nilaiData,
-      absensiReport: studentAbsensiRekap
+            messageElem.textContent = 'Menyimpan absensi...';
+            try {
+                 // Kirim absensiRecords sebagai array tunggal jika hanya menginput 1 record
+                 const result = await callAppsScript('inputAbsensi', 'Absensi', { absensiRecords: [absensiRecord] });
+                 messageElem.className = 'success-message';
+                 messageElem.textContent = result.message;
+                 // Clear form after success
+                 document.getElementById('absensi_siswaId').value = '';
+                 document.getElementById('absensi_keterangan').value = '';
+            } catch (error) {
+                messageElem.className = 'error-message';
+                messageElem.textContent = 'Error: ' + error.message;
+            }
+        });
     }
-  };
-}
+
+    async function renderInputNilai() {
+        const panel = document.getElementById('adminPanel') || document.getElementById('guruPanel');
+        panel.innerHTML = `
+            <h3>Input Nilai</h3>
+            <p id="nilaiMessage"></p>
+            <label for="nilai_siswaId">ID Siswa:</label>
+            <input type="text" id="nilai_siswaId" placeholder="ID_Siswa, misal: SIS_2025001">
+            <label for="nilai_mapel">Mata Pelajaran:</label>
+            <input type="text" id="nilai_mapel" placeholder="Nama Mata Pelajaran">
+            <label for="nilai_kategori">Kategori Nilai:</label>
+            <input type="text" id="nilai_kategori" placeholder="UTS, UAS, Tugas1, dll.">
+            <label for="nilai_score">Nilai:</label>
+            <input type="number" id="nilai_score" min="0" max="100" placeholder="0-100">
+            <label for="nilai_tanggalInput">Tanggal Input:</label>
+            <input type="date" id="nilai_tanggalInput" value="${new Date().toISOString().slice(0, 10)}">
+            <button id="submitNilaiBtn">Submit Nilai</button>
+        `;
+
+        document.getElementById('submitNilaiBtn').addEventListener('click', async () => {
+            const nilaiRecord = {
+                ID_Siswa: document.getElementById('nilai_siswaId').value,
+                Mata_Pelajaran: document.getElementById('nilai_mapel').value,
+                Kategori_Nilai: document.getElementById('nilai_kategori').value,
+                Nilai: parseFloat(document.getElementById('nilai_score').value),
+                Tanggal_Input: document.getElementById('nilai_tanggalInput').value
+            };
+            const messageElem = document.getElementById('nilaiMessage');
+
+            messageElem.className = '';
+            messageElem.textContent = '';
+
+            if (!nilaiRecord.ID_Siswa || !nilaiRecord.Mata_Pelajaran || !nilaiRecord.Kategori_Nilai || isNaN(nilaiRecord.Nilai) || !nilaiRecord.Tanggal_Input) {
+                messageElem.className = 'error-message';
+                messageElem.textContent = 'Harap lengkapi semua bidang yang wajib.';
+                return;
+            }
+
+            messageElem.textContent = 'Menyimpan nilai...';
+            try {
+                const result = await callAppsScript('inputNilai', 'Nilai', { nilaiRecord });
+                messageElem.className = 'success-message';
+                messageElem.textContent = result.message;
+                // Clear form after success
+                document.getElementById('nilai_siswaId').value = '';
+                document.getElementById('nilai_mapel').value = '';
+                document.getElementById('nilai_kategori').value = '';
+                document.getElementById('nilai_score').value = '';
+            } catch (error) {
+                messageElem.className = 'error-message';
+                messageElem.textContent = 'Error: ' + error.message;
+            }
+        });
+    }
+
+    async function renderRekapAbsensi() {
+        const panel = document.getElementById('adminPanel') || document.getElementById('guruPanel');
+        panel.innerHTML = `
+            <h3>Rekap Absensi</h3>
+            <p id="rekapAbsensiMessage"></p>
+            <label for="rekap_absensi_siswaId">Filter ID Siswa (Opsional):</label>
+            <input type="text" id="rekap_absensi_siswaId" placeholder="Misal: SIS_2025001">
+            <label for="rekap_absensi_month">Filter Bulan (YYYY-MM, Opsional):</label>
+            <input type="month" id="rekap_absensi_month" value="${new Date().toISOString().slice(0, 7)}">
+            <button id="filterRekapAbsensiBtn">Tampilkan Rekap</button>
+            <div id="rekapAbsensiDisplay"></div>
+        `;
+
+        document.getElementById('filterRekapAbsensiBtn').addEventListener('click', async () => {
+            const siswaIdFilter = document.getElementById('rekap_absensi_siswaId').value;
+            const monthFilter = document.getElementById('rekap_absensi_month').value;
+            const filter = {};
+            if (siswaIdFilter) filter.ID_Siswa = siswaIdFilter;
+            if (monthFilter) filter.month = monthFilter;
+
+            const displayArea = document.getElementById('rekapAbsensiDisplay');
+            const messageElem = document.getElementById('rekapAbsensiMessage');
+            messageElem.className = '';
+            messageElem.textContent = 'Memuat rekap absensi...';
+
+            try {
+                const rekapData = await callAppsScript('getRekapAbsensi', null, { filter });
+                if (rekapData && rekapData.length > 0) {
+                    let tableHtml = `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID Siswa</th>
+                                    <th>Nama Lengkap</th>
+                                    <th>Kelas</th>
+                                    <th>Hadir</th>
+                                    <th>Sakit</th>
+                                    <th>Izin</th>
+                                    <th>Alpha</th>
+                                    <th>Total Kehadiran</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+                    rekapData.forEach(row => {
+                        tableHtml += `
+                            <tr>
+                                <td>${row.ID_Siswa}</td>
+                                <td>${row.Nama_Lengkap}</td>
+                                <td>${row.Kelas}</td>
+                                <td>${row.Hadir}</td>
+                                <td>${row.Sakit}</td>
+                                <td>${row.Izin}</td>
+                                <td>${row.Alpha}</td>
+                                <td>${row.Total}</td>
+                            </tr>
+                        `;
+                    });
+                    tableHtml += `</tbody></table>`;
+                    displayArea.innerHTML = tableHtml;
+                    messageElem.textContent = 'Rekap absensi berhasil dimuat.';
+                    messageElem.className = 'success-message';
+                } else {
+                    displayArea.innerHTML = '<p>Tidak ada data absensi untuk filter ini.</p>';
+                    messageElem.textContent = ''; // Clear loading message
+                }
+            } catch (error) {
+                displayArea.innerHTML = '';
+                messageElem.className = 'error-message';
+                messageElem.textContent = 'Error memuat rekap absensi: ' + error.message;
+            }
+        });
+    }
+
+    async function renderRekapNilai() {
+        const panel = document.getElementById('adminPanel') || document.getElementById('guruPanel');
+        panel.innerHTML = `
+            <h3>Rekap Nilai</h3>
+            <p id="rekapNilaiMessage"></p>
+            <label for="rekap_nilai_siswaId">Filter ID Siswa (Opsional):</label>
+            <input type="text" id="rekap_nilai_siswaId" placeholder="Misal: SIS_2025001">
+            <label for="rekap_nilai_mapel">Filter Mata Pelajaran (Opsional):</label>
+            <input type="text" id="rekap_nilai_mapel" placeholder="Misal: Informatika">
+            <button id="filterRekapNilaiBtn">Tampilkan Rekap</button>
+            <div id="rekapNilaiDisplay"></div>
+        `;
+
+        document.getElementById('filterRekapNilaiBtn').addEventListener('click', async () => {
+            const siswaIdFilter = document.getElementById('rekap_nilai_siswaId').value;
+            const mapelFilter = document.getElementById('rekap_nilai_mapel').value;
+            const filter = {};
+            if (siswaIdFilter) filter.ID_Siswa = siswaIdFilter;
+            if (mapelFilter) filter.Mata_Pelajaran = mapelFilter;
+
+            const displayArea = document.getElementById('rekapNilaiDisplay');
+            const messageElem = document.getElementById('rekapNilaiMessage');
+            messageElem.className = '';
+            messageElem.textContent = 'Memuat rekap nilai...';
+
+            try {
+                const rekapData = await callAppsScript('getRekapNilai', null, { filter });
+                if (rekapData && rekapData.length > 0) {
+                    let tableHtml = `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>ID Siswa</th>
+                                    <th>Nama Lengkap</th>
+                                    <th>Kelas</th>
+                                    <th>Mata Pelajaran</th>
+                                    <th>Rata-rata Nilai</th>
+                                    <th>Status KKM</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+                    rekapData.forEach(row => {
+                        tableHtml += `
+                            <tr>
+                                <td>${row.ID_Siswa}</td>
+                                <td>${row.Nama_Lengkap}</td>
+                                <td>${row.Kelas}</td>
+                                <td>${row.Mata_Pelajaran}</td>
+                                <td>${row.Rata_Rata_Nilai}</td>
+                                <td style="color: ${row.Status_KKM === 'Lulus' ? 'green' : 'red'};">${row.Status_KKM}</td>
+                            </tr>
+                        `;
+                    });
+                    tableHtml += `</tbody></table>`;
+                    displayArea.innerHTML = tableHtml;
+                    messageElem.textContent = 'Rekap nilai berhasil dimuat.';
+                    messageElem.className = 'success-message';
+                } else {
+                    displayArea.innerHTML = '<p>Tidak ada data nilai untuk filter ini.</p>';
+                    messageElem.textContent = ''; // Clear loading message
+                }
+            } catch (error) {
+                displayArea.innerHTML = '';
+                messageElem.className = 'error-message';
+                messageElem.textContent = 'Error memuat rekap nilai: ' + error.message;
+            }
+        });
+    }
+
+    async function renderCreateUser() {
+        const panel = document.getElementById('adminPanel');
+        panel.innerHTML = `
+            <h3>Buat User Baru</h3>
+            <p id="createUserMessage"></p>
+            <label for="newUsername">Username:</label>
+            <input type="text" id="newUsername" placeholder="Username unik">
+            <label for="newPassword">Password:</label>
+            <input type="password" id="newPassword" placeholder="Password">
+            <label for="newUserRole">Peran:</label>
+            <select id="newUserRole">
+                <option value="Admin">Admin</option>
+                <option value="Guru">Guru</option>
+                <option value="Siswa">Siswa</option>
+            </select>
+            <button id="submitUserBtn">Buat User</button>
+        `;
+
+        document.getElementById('submitUserBtn').addEventListener('click', async () => {
+            const userData = {
+                Username: document.getElementById('newUsername').value,
+                password: document.getElementById('newPassword').value, // akan di-hash di backend
+                Role: document.getElementById('newUserRole').value
+            };
+            const messageElem = document.getElementById('createUserMessage');
+
+            messageElem.className = '';
+            messageElem.textContent = '';
+
+            if (!userData.Username || !userData.password || !userData.Role) {
+                messageElem.className = 'error-message';
+                messageElem.textContent = 'Harap lengkapi semua bidang.';
+                return;
+            }
+
+            messageElem.textContent = 'Membuat user...';
+            try {
+                const result = await callAppsScript('createUser', 'Users', userData);
+                messageElem.className = 'success-message';
+                messageElem.textContent = result.message;
+                // Clear form
+                document.getElementById('newUsername').value = '';
+                document.getElementById('newPassword').value = '';
+            } catch (error) {
+                messageElem.className = 'error-message';
+                messageElem.textContent = 'Error: ' + error.message;
+            }
+        });
+    }
+
+    // --- Inisialisasi Aplikasi ---
+    renderLoginPage(); // Tampilkan halaman login saat aplikasi dimuat pertama kali
+});
